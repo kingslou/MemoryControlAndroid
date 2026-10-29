@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.github.kingslou"
-version = "1.1.0"
+version = "1.1.1"
 
 android {
     namespace = "io.github.kingslou.memorycontrol"
@@ -17,10 +17,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
-    kotlinOptions { jvmTarget = "1.8" }
+    kotlinOptions {
+        jvmTarget = "1.8"
+        // 保持 Kotlin 1.7 宿主可读取的元数据，并限制源码使用的标准库 API。
+        languageVersion = "1.7"
+        apiVersion = "1.7"
+    }
     publishing {
         singleVariant("release") { withSourcesJar() }
     }
+}
+
+dependencies {
+    // 显式声明兼容基线，避免将编译器版本对应的标准库传递给旧宿主。
+    api("org.jetbrains.kotlin:kotlin-stdlib:1.7.10")
 }
 
 afterEvaluate {

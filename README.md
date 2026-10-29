@@ -38,11 +38,17 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.kingslou:MemoryControlAndroid:1.1.0")
+    implementation("com.github.kingslou:MemoryControlAndroid:1.1.1")
 }
 ```
 
-首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.1.0](https://jitpack.io/#kingslou/MemoryControlAndroid/1.1.0)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
+首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.1.1](https://jitpack.io/#kingslou/MemoryControlAndroid/1.1.1)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
+
+### Kotlin 版本兼容
+
+从 `1.1.1` 起，发布产物使用 Kotlin 1.7 语言/API 级别和元数据，传递依赖 `kotlin-stdlib:1.7.10`，兼容 Kotlin 1.7.10 宿主。库自身仍使用 Kotlin 1.9.24 编译器构建；宿主无需跟随升级编译器。宿主已有更高版本的标准库时，Gradle 按正常版本冲突规则解析。
+
+`1.1.0` 的元数据和标准库为 Kotlin 1.9，Kotlin 1.7 宿主接入会报 `metadata is 1.9.0, expected version is 1.7.1`。请将依赖升级到 `1.1.1`；无需添加 `-Xskip-metadata-version-check` 或强制降级依赖。
 
 如果只在调试包中保留库代码，可使用 `debugImplementation`，并将所有引用该库的代码放在 `src/debug` 中；不要在 `src/main` 直接引用仅存在于 debug 编译路径的类。
 
