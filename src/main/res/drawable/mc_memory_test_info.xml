@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 参数提示和测试说明中的信息图标。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp" android:height="14dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#667381"
+        android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M12,2A10,10 0,1 0,12 22A10,10 0,1 0,12 2M12,11L12,17M12,7L12,7.2" />
+</vector>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮框标题的九点拖动标识，不依赖字体字形。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#667381" android:pathData="M5,3a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M12,3a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M19,3a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M5,10a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M12,10a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M19,10a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M5,17a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M12,17a2,2 0,1 0,0 4a2,2 0,1 0,0 -4M19,17a2,2 0,1 0,0 4a2,2 0,1 0,0 -4" />
+</vector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 独立释放按钮的垃圾桶图标，仅用于解除测试占用。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#009E8F"
+        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4,6L20,6M9,6L9,3L15,3L15,6M6,6L7,21L17,21L18,6M10,10L10,17M14,10L14,17" />
+</vector>
