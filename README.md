@@ -1,6 +1,6 @@
 # MemoryControlAndroid
 
-从 `MemoryPressureFloatingPanel` 提取的 Android 内存监控和加压库。纯 Java，只有 Android framework 依赖，不需要悬浮窗权限，不依赖业务 Activity 基类。
+从 `MemoryPressureFloatingPanel` 提取的 Android 内存监控和加压库。库与 Demo 均采用 Kotlin 实现，基于 Android framework，仅额外依赖 Kotlin 标准库，不需要悬浮窗权限，不依赖业务 Activity 基类。
 
 ## 功能
 
@@ -22,27 +22,27 @@ Demo 已通过 `:sample:assembleDebug` 编译，并在 Lenovo TB223FC（Android 
 
 ## Gradle 依赖
 
-在宿主 `settings.gradle` 中添加 JitPack 仓库，保留已有的其他仓库：
+在宿主 `settings.gradle.kts` 中添加 JitPack 仓库，保留已有的其他仓库：
 
-```groovy
+```kotlin
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
+        maven { url = uri("https://jitpack.io") }
     }
 }
 ```
 
 在 app 模块中添加：
 
-```groovy
+```kotlin
 dependencies {
-    implementation 'com.github.kingslou:MemoryControlAndroid:1.0.1'
+    implementation("com.github.kingslou:MemoryControlAndroid:1.1.0")
 }
 ```
 
-首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.0.1](https://jitpack.io/#kingslou/MemoryControlAndroid/1.0.1)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
+首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.1.0](https://jitpack.io/#kingslou/MemoryControlAndroid/1.1.0)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
 
 如果只在调试包中保留库代码，可使用 `debugImplementation`，并将所有引用该库的代码放在 `src/debug` 中；不要在 `src/main` 直接引用仅存在于 debug 编译路径的类。
 
@@ -50,25 +50,25 @@ dependencies {
 
 在自己的 `Application.onCreate()` 中、首个 Activity 恢复前调用：
 
-```java
-import io.github.kingslou.memorycontrol.MemoryPressureFloatingPanel;
+```kotlin
+import android.app.Application
+import io.github.kingslou.memorycontrol.MemoryPressureFloatingPanel
 
-public class MyApplication extends Application {
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        MemoryPressureFloatingPanel.install(this);
+class MyApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        MemoryPressureFloatingPanel.install(this)
     }
 }
 ```
 
-记得在宿主清单中注册自己的 Application。Kotlin 中同样调用 `MemoryPressureFloatingPanel.install(this)` 即可。
+记得在宿主清单中注册自己的 Application。公开入口使用 `@JvmStatic`，Java 项目仍可通过相同的静态方法调用；快照字段也保留 Java 访问兼容。
 
 `install`、`uninstall`、`isInstalled` 必须在主线程调用。重复安装不重复注册。安装后会在下一次 Activity 恢复时挂载面板。
 
-```java
-boolean installed = MemoryPressureFloatingPanel.isInstalled();
-MemoryPressureFloatingPanel.uninstall();
+```kotlin
+val installed = MemoryPressureFloatingPanel.isInstalled()
+MemoryPressureFloatingPanel.uninstall()
 ```
 
 卸载会移除窗口和生命周期回调，并异步释放测试内存。可再次安装；后台工作线程保留供进程内复用。
@@ -79,29 +79,30 @@ MemoryPressureFloatingPanel.uninstall();
 
 无需安装面板也可以使用。以下方法可以在任意线程调用，实际分配、释放及采样在内部工作线程串行执行：
 
-```java
-import io.github.kingslou.memorycontrol.MemoryPressureSimulator;
+```kotlin
+import io.github.kingslou.memorycontrol.MemoryPressureSimulator
 
 // 同时加压：整机目标 90%，Java 堆目标 80%，每行随机像素 512。
 MemoryPressureSimulator.start(
-        application,
-        MemoryPressureSimulator.MODE_BOTH,
-        90,
-        80,
-        512);
+    context = application,
+    mode = MemoryPressureSimulator.MODE_BOTH,
+    targetUsedPercent = 90,
+    targetJavaPercent = 80,
+    noisyPixelsPerRow = 512
+)
 
 // 停止新增分配，已有测试占用继续保留。
-MemoryPressureSimulator.pause();
+MemoryPressureSimulator.pause()
 
 // 异步清除 Native 像素和 Java 数组，不清除宿主的业务缓存。
-MemoryPressureSimulator.release();
+MemoryPressureSimulator.release()
 
 // 异步请求采样；getSnapshot 返回最近一次完成的快照，并非同步采样结果。
-MemoryPressureSimulator.requestSample(application);
-MemoryPressureSimulator.Snapshot snapshot = MemoryPressureSimulator.getSnapshot();
+MemoryPressureSimulator.requestSample(application)
+val snapshot = MemoryPressureSimulator.getSnapshot()
 
 // 输出事件时间及后续后台采样，日志标签为 MemoryControl。
-MemoryPressureSimulator.recordCheckpoint("页面提交完成");
+MemoryPressureSimulator.recordCheckpoint("页面提交完成")
 ```
 
 | 参数 / 模式 | 含义 |
@@ -119,7 +120,7 @@ MemoryPressureSimulator.recordCheckpoint("页面提交完成");
 
 ## 本地源码或 AAR 接入
 
-也可以将此仓库作为本地 Gradle 模块引入，或发布到本机 Maven 仓库。开发环境为 JDK 17、Android SDK 34、AGP 8.4.2、Gradle 8.6；宿主消费 AAR 不要求使用相同 AGP。
+也可以将此仓库作为本地 Gradle 模块引入，或发布到本机 Maven 仓库。开发环境为 JDK 17、Android SDK 34、AGP 8.4.2、Gradle 8.6、Kotlin 1.9.24；宿主消费 AAR 不要求使用相同 AGP。
 
 ```powershell
 # 生成 build/outputs/aar/MemoryControlAndroid-release.aar
@@ -132,7 +133,7 @@ MemoryPressureSimulator.recordCheckpoint("页面提交完成");
 .\gradlew.bat :sample:installDebug
 ```
 
-`sample` 演示 Application 安装、前后台切换、两个 Activity 之间切换及卸载。核心类在 `src/main/java/io/github/kingslou/memorycontrol/`，图标均使用 `mc_` 前缀以减少宿主资源冲突。
+`sample` 演示 Application 安装、前后台切换、两个 Activity 之间切换及卸载。核心类在 `src/main/kotlin/io/github/kingslou/memorycontrol/`，图标均使用 `mc_` 前缀以减少宿主资源冲突。
 
 ## 使用边界
 

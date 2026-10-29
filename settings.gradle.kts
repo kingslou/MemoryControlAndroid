@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'MemoryControlAndroid'
-include ':sample'
+rootProject.name = "MemoryControlAndroid"
+include(":sample")
