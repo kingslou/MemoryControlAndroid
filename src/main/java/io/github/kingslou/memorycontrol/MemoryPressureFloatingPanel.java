@@ -46,8 +46,6 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
     private static MemoryPressureFloatingPanel instance;
     /** 只持有 Application，用于卸载生命周期回调。 */
     private final Application application;
-    /** 可选宿主策略适配器，未配置时隐藏销毁策略区域。 */
-    private final DestroyStrategyController destroyStrategyController;
     /** 卸载后使已投递到 DecorView 的挂载任务失效。 */
     private boolean active = true;
     /** 所有窗口操作及UI刷新只在主线程执行。 */
@@ -112,14 +110,6 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
     private Button javaTargetButton;
     /** 开始、继续和暂停共用一个按钮，点击时查询真实运行状态。 */
     private Button controlButton;
-    /** 宿主页面销毁策略选择按钮，不触发立即销毁或释放内存。 */
-    private Button killDestroyButton;
-    /** 仅移除登记策略的选择按钮，和kill选项互斥高亮。 */
-    private Button removeDestroyButton;
-    /** 展示当前策略和默认标记，避免误把选择按钮当成立即执行命令。 */
-    private TextView destroyStrategyView;
-    /** 仅策略改变时更新背景和勾选图标，窗口重建后重新读取进程级选项。 */
-    private Boolean renderedDestroyRemove;
     /** 当前Activity的应用内子窗口参数。 */
     private WindowManager.LayoutParams windowParams;
     /** 默认收起，进入任意模块后点击标题即可测试。 */
@@ -164,11 +154,9 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
         }
     };
 
-    /** 保存进程级适配器，旧系统默认使用其支持的 Java 堆模式。 */
-    private MemoryPressureFloatingPanel(Application application,
-                                        DestroyStrategyController destroyStrategyController) {
+    /** 保存应用引用，旧系统默认使用其支持的 Java 堆模式。 */
+    private MemoryPressureFloatingPanel(Application application) {
         this.application = application;
-        this.destroyStrategyController = destroyStrategyController;
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             mode = MemoryPressureSimulator.MODE_APP;
         }
@@ -180,21 +168,12 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
      * @param application 当前进程的 Application
      */
     public static void install(Application application) {
-        install(application, null);
-    }
-
-    /**
-     * 安装并接入宿主可选的销毁策略区域。重复安装保留首次传入的适配器。
-     * @param application 当前进程的 Application
-     * @param controller 只保存策略的适配器，null 时隐藏该区域；不能捕获 Activity
-     */
-    public static void install(Application application, DestroyStrategyController controller) {
         if (!DebugEnvironment.isDebuggable(application)) {
             return;
         }
         requireMainThread();
         if (instance == null) {
-            instance = new MemoryPressureFloatingPanel(application, controller);
+            instance = new MemoryPressureFloatingPanel(application);
             application.registerActivityLifecycleCallbacks(instance);
         }
     }
@@ -356,10 +335,6 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
         systemTargetButton = null;
         javaTargetButton = null;
         controlButton = null;
-        killDestroyButton = null;
-        removeDestroyButton = null;
-        destroyStrategyView = null;
-        renderedDestroyRemove = null;
     }
 
     /** 按确认的240dp窄版设计创建展开和收起视图，保留小窗口滚动能力。 */
@@ -546,36 +521,6 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
             MemoryPressureSimulator.release();
             renderSnapshot();
         });
-
-        if (destroyStrategyController != null) {
-            TextView destroyTitle = text(activity, 11);
-            destroyTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            destroyTitle.setText("页面销毁策略");
-            destroyTitle.setPadding(dp(2), dp(9), dp(2), dp(1));
-            content.addView(destroyTitle);
-            LinearLayout destroyChoices = new LinearLayout(activity);
-            destroyChoices.setOrientation(LinearLayout.HORIZONTAL);
-            content.addView(destroyChoices);
-            killDestroyButton = destroyChoiceButton(activity, destroyChoices);
-            // 切换选项只影响后续Activity.onDestroy，不立即调用killActivity。
-            killDestroyButton.setOnClickListener(view -> {
-                destroyStrategyController.setRemoveEnabled(false);
-                renderSnapshot();
-            });
-            removeDestroyButton = destroyChoiceButton(activity, destroyChoices);
-            removeDestroyButton.setOnClickListener(view -> {
-                destroyStrategyController.setRemoveEnabled(true);
-                renderSnapshot();
-            });
-            destroyStrategyView = text(activity, 10);
-            destroyStrategyView.setPadding(dp(2), dp(5), dp(2), dp(2));
-            content.addView(destroyStrategyView);
-            TextView destroyHint = text(activity, 8.5f);
-            destroyHint.setTextColor(COLOR_MUTED);
-            destroyHint.setPadding(dp(2), 0, dp(2), 0);
-            destroyHint.setText("仅影响后续 Activity.onDestroy");
-            content.addView(destroyHint);
-        }
 
         LinearLayout helpCard = card(activity, content, LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams helpParams = (LinearLayout.LayoutParams) helpCard.getLayoutParams();
@@ -813,62 +758,12 @@ public final class MemoryPressureFloatingPanel implements Application.ActivityLi
         }
         controlButton.setEnabled(true);
         controlButton.setText(running ? "暂停" : memory.allocatedMb > 0 ? "继续" : "开始");
-        renderDestroyStrategy();
         // 旧系统仍可暂停正在运行的测试，只限制重新开始不支持的Native模式。
         if (!running && Build.VERSION.SDK_INT < Build.VERSION_CODES.O
                 && mode != MemoryPressureSimulator.MODE_APP) {
             controlButton.setEnabled(false);
             controlButton.setText("需Android 8");
         }
-    }
-
-    /** 创建双行等宽选择按钮，尺寸保留在当前240dp面板内。 */
-    private Button destroyChoiceButton(Activity activity, LinearLayout parent) {
-        Button view = button(activity, parent);
-        view.setTextSize(TypedValue.COMPLEX_UNIT_PX, dp(10));
-        view.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
-        view.setGravity(Gravity.CENTER);
-        view.setMaxLines(2);
-        view.setPadding(dp(6), dp(3), dp(6), dp(3));
-        view.setCompoundDrawablePadding(dp(3));
-        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) view.getLayoutParams();
-        params.height = dp(42);
-        view.setLayoutParams(params);
-        return view;
-    }
-
-    /** 按选项显示浅青描边和勾选，未选项保持白底灰色描边。 */
-    private void styleDestroyChoice(Button view, String name, String subtitle, boolean selected) {
-        styleButton(view, selected ? COLOR_ACCENT_SURFACE : Color.WHITE,
-                selected ? COLOR_ACCENT : 0xffa0adb8, selected ? COLOR_ACCENT : COLOR_TEXT);
-        SpannableString caption = new SpannableString(name + "\n" + subtitle);
-        caption.setSpan(new StyleSpan(Typeface.BOLD), 0, name.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        caption.setSpan(new RelativeSizeSpan(0.9f), name.length() + 1, caption.length(),
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        caption.setSpan(new ForegroundColorSpan(selected ? COLOR_ACCENT : COLOR_MUTED),
-                name.length() + 1, caption.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        view.setText(caption);
-        // 圆底和白色勾线保留两种颜色，不使用通用按钮的单色图标染色。
-        view.setCompoundDrawableTintList(null);
-        view.setCompoundDrawablesRelative(null, null,
-                selected ? icon(attachedActivity, R.drawable.mc_memory_test_checked, 13) : null, null);
-        view.setSelected(selected);
-        view.setContentDescription(name + "，" + subtitle + (selected ? "，当前已选择" : "，点击选择"));
-    }
-
-    /** 独立于加压状态刷新销毁策略，增压期间也可以切换对比方式。 */
-    private void renderDestroyStrategy() {
-        if (destroyStrategyController == null) {
-            return;
-        }
-        boolean remove = destroyStrategyController.isRemoveEnabled();
-        if (renderedDestroyRemove != null && renderedDestroyRemove == remove) {
-            return;
-        }
-        styleDestroyChoice(killDestroyButton, "killActivity", "调用 finish", !remove);
-        styleDestroyChoice(removeDestroyButton, "removeActivity", "仅移除登记", remove);
-        destroyStrategyView.setText(remove ? "当前：removeActivity" : "当前：killActivity");
-        renderedDestroyRemove = remove;
     }
 
     /** 为矢量图标设置实际密度尺寸，避免字体图标在不同系统中缺字。 */

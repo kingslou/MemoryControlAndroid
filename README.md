@@ -8,7 +8,6 @@
 - 后台采样应用 PSS、Swap PSS、Java 堆、整机内存及低内存回调。
 - 支持 Native 像素内存、Java 堆和两者同时加压，可调整目标比例。
 - 暂停、收起、切页和进入后台均保留测试占用；手动释放只清除测试器持有的内存。
-- 可选接入宿主的页面销毁策略切换，默认隐藏该区域。
 - 依据**宿主的 `FLAG_DEBUGGABLE`** 决定是否安装及开始采样/加压，使用 release AAR 也能在宿主调试包中正常工作。
 
 支持 Android 6.0 / API 23 及以上。Native 和混合加压需要 Android 8.0 / API 26；Android 6/7 面板默认使用 Java 堆模式。
@@ -31,11 +30,11 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.kingslou:MemoryControlAndroid:1.0.0'
+    implementation 'com.github.kingslou:MemoryControlAndroid:1.0.1'
 }
 ```
 
-首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.0.0](https://jitpack.io/#kingslou/MemoryControlAndroid/1.0.0)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
+首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.0.1](https://jitpack.io/#kingslou/MemoryControlAndroid/1.0.1)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
 
 如果只在调试包中保留库代码，可使用 `debugImplementation`，并将所有引用该库的代码放在 `src/debug` 中；不要在 `src/main` 直接引用仅存在于 debug 编译路径的类。
 
@@ -57,7 +56,7 @@ public class MyApplication extends Application {
 
 记得在宿主清单中注册自己的 Application。Kotlin 中同样调用 `MemoryPressureFloatingPanel.install(this)` 即可。
 
-`install`、`uninstall`、`isInstalled` 必须在主线程调用。重复安装不重复注册，保留首次传入的适配器。安装后会在下一次 Activity 恢复时挂载面板。
+`install`、`uninstall`、`isInstalled` 必须在主线程调用。重复安装不重复注册。安装后会在下一次 Activity 恢复时挂载面板。
 
 ```java
 boolean installed = MemoryPressureFloatingPanel.isInstalled();
@@ -109,26 +108,6 @@ MemoryPressureSimulator.recordCheckpoint("页面提交完成");
 `start(context)` 简写使用 Native 模式、95% 整机目标和 512 个随机像素；面板在 API 26+ 默认选择混合模式、95% 整机目标和 80% Java 堆目标。参数只能在暂停后调整，运行中再次调用 `start` 不改变当前任务。达到目标或分配上限后暂停新增分配并保留已有占用。
 
 `Snapshot` 不可变，可跨线程读取。字段以 `Mb` 命名但单位统一为 **MiB（1024 × 1024 字节）**。PSS 未采样、Swap 字段不可用、整机使用率未知时返回 `-1`；`trimLevel = -1` 表示尚未收到回调。测试占用和 PSS 是不同指标，不应相加。`pause`、`release` 返回时，后台任务及快照更新可能尚未完成。
-
-## 可选：适配原有页面销毁策略
-
-库不依赖、也不实现宿主的 `BaseActivityDestroyPolicy` 或 Activity 管理器。需要原来的切换区域时，在宿主传入适配器：
-
-```java
-MemoryPressureFloatingPanel.install(this, new DestroyStrategyController() {
-    @Override
-    public boolean isRemoveEnabled() {
-        return BaseActivityDestroyPolicy.isRemoveEnabled();
-    }
-
-    @Override
-    public void setRemoveEnabled(boolean enabled) {
-        BaseActivityDestroyPolicy.setRemoveEnabled(enabled);
-    }
-});
-```
-
-导入 `io.github.kingslou.memorycontrol.DestroyStrategyController`，`BaseActivityDestroyPolicy` 则使用宿主自己的实现。面板仅保存/读取策略，实际销毁行为继续由宿主执行；适配器在主线程调用，不应捕获 Activity。未提供适配器时，这部分 UI 完全隐藏。
 
 ## 本地源码或 AAR 接入
 
