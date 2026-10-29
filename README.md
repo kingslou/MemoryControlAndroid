@@ -12,6 +12,14 @@
 
 支持 Android 6.0 / API 23 及以上。Native 和混合加压需要 Android 8.0 / API 26；Android 6/7 面板默认使用 Java 堆模式。
 
+## Demo 实机截图
+
+Demo 已通过 `:sample:assembleDebug` 编译，并在 Lenovo TB223FC（Android 12）上安装运行；已验证面板拖动、展开/收起和页面切换。以下为实机截图，点击可查看原图。
+
+| 展开状态 | 收起状态 |
+| --- | --- |
+| <img src="docs/screenshots/panel-expanded.png" alt="内存监控面板展开状态" width="420"> | <img src="docs/screenshots/panel-collapsed.png" alt="内存监控面板收起状态" width="420"> |
+
 ## Gradle 依赖
 
 在宿主 `settings.gradle` 中添加 JitPack 仓库，保留已有的其他仓库：
