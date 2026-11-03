@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.github.kingslou"
-version = "1.1.1"
+version = "1.2.0"
 
 android {
     namespace = "io.github.kingslou.memorycontrol"
@@ -31,6 +31,7 @@ android {
 dependencies {
     // 显式声明兼容基线，避免将编译器版本对应的标准库传递给旧宿主。
     api("org.jetbrains.kotlin:kotlin-stdlib:1.7.10")
+    testImplementation("junit:junit:4.13.2")
 }
 
 afterEvaluate {

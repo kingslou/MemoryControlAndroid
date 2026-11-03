@@ -18,7 +18,7 @@ class MainActivity : Activity() {
             setPadding(24, 80, 24, 24)
         }
         content.addView(TextView(this).apply {
-            text = "MemoryControlAndroid\n\n点击悬浮面板展开，拖动标题移动。\n暂停、收起和切页保留测试内存，点击释放清除。\nAndroid 6/7 仅支持 Java 堆加压。"
+            text = "MemoryControlAndroid\n\n点击悬浮面板展开，拖动标题移动。\n拖到左右边缘松手可隐藏，向内拖动或点击拉手恢复。\n暂停、收起和切页保留测试内存，点击释放清除。\nAndroid 6/7 仅支持 Java 堆加压。"
         })
         content.addView(Button(this).apply {
             text = "打开第二个页面"

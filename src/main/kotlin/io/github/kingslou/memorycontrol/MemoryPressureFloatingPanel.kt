@@ -29,6 +29,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -142,6 +143,14 @@ class MemoryPressureFloatingPanel private constructor(
     private var positionY = 0
     /** 首次挂载才初始化坐标，后续只约束边界。 */
     private var positionInitialized = false
+    /** 跨页面保留停靠侧，独立于展开或收起状态。 */
+    private var dockSide = EdgeDockGeometry.NONE
+    /** 隐藏动画期间禁止再次开始拖动，结束后收缩实际触摸窗口。 */
+    private var docking = false
+    /** 页面旋转或分屏改变可用区域后，重新约束窗口并保持原停靠侧。 */
+    private val decorLayoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        constrainPosition()
+    }
     /** 定期展示最近快照并合并请求后台采样，退后台立即移除。 */
     private val refresh = object : Runnable {
         /** 只为当前已挂载页面刷新，不在主线程读取 PSS。 */
@@ -196,26 +205,29 @@ class MemoryPressureFloatingPanel private constructor(
         try {
             val current = createPanel(activity)
             views = current
+            applyDockAppearance(current)
             if (!positionInitialized) {
                 positionX = dp(12)
                 positionY = dp(80)
                 positionInitialized = true
             }
             val params = WindowManager.LayoutParams(
-                minOf(dp(240), maxOf(dp(160), activity.window.decorView.width - dp(24))),
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                if (dockSide == EdgeDockGeometry.NONE) panelWidth(activity) else dp(24),
+                if (dockSide == EdgeDockGeometry.NONE) WindowManager.LayoutParams.WRAP_CONTENT else dp(80),
                 WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 token = activity.window.decorView.windowToken
                 gravity = Gravity.TOP or Gravity.LEFT
-                x = positionX
+                x = EdgeDockGeometry.windowX(dockSide, positionX, width, activity.window.decorView.width)
                 y = positionY
             }
             windowParams = params
+            activity.window.decorView.addOnLayoutChangeListener(decorLayoutListener)
             manager.addView(current.root, params)
-            current.root.post { constrainPosition() }
+            current.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> constrainPosition() }
+            current.root.post { if (views === current) constrainPosition() }
             uiHandler.post(refresh)
         } catch (error: RuntimeException) {
             Log.w(MemoryPressureSimulator.TAG, "内存悬浮框挂载失败", error)
@@ -226,6 +238,9 @@ class MemoryPressureFloatingPanel private constructor(
     /** 注销窗口并整体清空视图引用，不释放测试器持有的内存。 */
     private fun detach() {
         uiHandler.removeCallbacks(refresh)
+        views?.panel?.animate()?.cancel()
+        docking = false
+        attachedActivity?.window?.decorView?.removeOnLayoutChangeListener(decorLayoutListener)
         val root = views?.root
         val manager = windowManager
         if (root != null && manager != null && root.isAttachedToWindow) {
@@ -395,7 +410,26 @@ class MemoryPressureFloatingPanel private constructor(
             setTextColor(COLOR_MUTED)
             text = "暂停/收起/切页均保留占用；释放清除测试内存。\n整机模式也增加应用PSS。单位MiB。\nJava堆至少留16MiB，实际目标可能受限。"
         }, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(5), 0, 0, 0) })
-        return PanelViews(root, title, body, headerHint, headerArrow, summary, summaryMetrics,
+        val windowRoot = FrameLayout(activity).apply {
+            // 根窗口持续接收拉手手势，内容切换和窗口缩放不会中断当前拖动。
+            setOnTouchListener(DragListener(fromHandle = true))
+            setOnClickListener { if (dockSide != EdgeDockGeometry.NONE) restorePanel(animate = true) }
+        }
+        windowRoot.addView(root, FrameLayout.LayoutParams(-1, -2))
+        val handle = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            elevation = dp(4).toFloat()
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val handleArrow = image(activity, R.drawable.mc_memory_test_expand, 14).apply {
+            imageTintList = ColorStateList.valueOf(COLOR_ACCENT)
+        }
+        handle.addView(handleArrow, LinearLayout.LayoutParams(dp(14), dp(14)))
+        handle.addView(View(activity).apply { background = roundedBackground(0xff72c3b9.toInt(), 0) },
+            LinearLayout.LayoutParams(dp(3), dp(18)).apply { topMargin = dp(8) })
+        windowRoot.addView(handle, FrameLayout.LayoutParams(dp(24), dp(80)))
+        return PanelViews(windowRoot, root, handle, handleArrow, title, body, headerHint, headerArrow, summary, summaryMetrics,
             summaryAllocation, pssValue, swap, javaMetrics, javaPercent, javaProgress, systemMetrics,
             systemPercent, systemProgress, allocation, lowMemory, state, targetHint, modeButton,
             systemTargetButton, javaTargetButton, controlButton)
@@ -408,7 +442,7 @@ class MemoryPressureFloatingPanel private constructor(
         current.body.visibility = if (collapsed) View.GONE else View.VISIBLE
         current.summary.visibility = if (collapsed) View.VISIBLE else View.GONE
         renderSnapshot()
-        current.root.post { constrainPosition() }
+        current.root.post { if (views === current) constrainPosition() }
     }
 
     /** 使用系统原始密度，避免业务 AutoSize 修改页面密度影响面板。 */
@@ -635,16 +669,96 @@ class MemoryPressureFloatingPanel private constructor(
         else -> "未开始"
     }
 
-    /** 页面尺寸和内容变化后约束坐标，始终保留可操作的标题。 */
+    /** 维持原有面板宽度，并在极窄分屏窗口中避免超出页面。 */
+    private fun panelWidth(activity: Activity): Int =
+        minOf(dp(240), maxOf(dp(160), activity.window.decorView.width - dp(24)))
+            .coerceAtMost(maxOf(1, activity.window.decorView.width))
+
+    /** 切换完整内容与窄拉手；隐藏不修改 collapsed、加压参数或测试内存。 */
+    private fun applyDockAppearance(current: PanelViews) {
+        val hidden = dockSide != EdgeDockGeometry.NONE
+        current.panel.visibility = if (hidden) View.GONE else View.VISIBLE
+        current.handle.visibility = if (hidden) View.VISIBLE else View.GONE
+        // 正常面板的空白区域不成为拉手触摸目标，避免使用未初始化的手势起点。
+        current.root.isClickable = hidden
+        current.root.contentDescription = if (hidden) "内存测试，向内拖动或点击拉出面板" else null
+        current.root.importantForAccessibility = if (hidden) View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        val radius = dp(12).toFloat()
+        current.handle.background = GradientDrawable().apply {
+            setColor(COLOR_ACCENT_SURFACE)
+            setStroke(dp(1), 0xffa9d8d1.toInt())
+            cornerRadii = if (dockSide == EdgeDockGeometry.LEFT)
+                floatArrayOf(0f, 0f, radius, radius, radius, radius, 0f, 0f)
+            else floatArrayOf(radius, radius, 0f, 0f, 0f, 0f, radius, radius)
+        }
+        current.handleArrow.rotation = if (dockSide == EdgeDockGeometry.LEFT) -90f else 90f
+    }
+
+    /** 只在标题拖动松手且距离边缘不超过 16dp 时滑入隐藏。 */
+    private fun dockAtNearestEdge() {
+        val current = views ?: return
+        val activity = attachedActivity ?: return
+        val side = EdgeDockGeometry.sideAtEdge(positionX, panelWidth(activity),
+            activity.window.decorView.width, dp(16))
+        if (side == EdgeDockGeometry.NONE || docking) return
+        dockSide = side
+        docking = true
+        current.panel.animate().cancel()
+        current.panel.animate().translationX((if (side == EdgeDockGeometry.LEFT) -1 else 1) *
+            panelWidth(activity).toFloat()).setDuration(180L).withEndAction {
+            if (views === current) {
+                docking = false
+                applyDockAppearance(current)
+                current.panel.translationX = 0f
+                constrainPosition()
+            }
+        }.start()
+    }
+
+    /** 拉出后恢复原来的展开状态；点击拉手时留 12dp 边距，向内拖动时跟随抓取点。 */
+    private fun restorePanel(animate: Boolean, deltaX: Int = 0) {
+        val current = views ?: return
+        val activity = attachedActivity ?: return
+        val side = dockSide
+        if (side == EdgeDockGeometry.NONE) return
+        current.panel.animate().cancel()
+        docking = false
+        dockSide = EdgeDockGeometry.NONE
+        positionX = EdgeDockGeometry.restoredX(side, positionX, panelWidth(activity), dp(24), deltaX)
+        if (animate) positionX += if (side == EdgeDockGeometry.LEFT) dp(12) else -dp(12)
+        applyDockAppearance(current)
+        constrainPosition()
+        if (animate) {
+            current.panel.translationX = (if (side == EdgeDockGeometry.LEFT) -1 else 1) *
+                panelWidth(activity).toFloat()
+            current.panel.animate().translationX(0f).setDuration(180L).start()
+        } else current.panel.translationX = 0f
+    }
+
+    /** 页面及内容变化后约束窗口；隐藏时实际触摸区域只有 24×80dp，不遮挡其余页面。 */
     private fun constrainPosition() {
-        val root = views?.root ?: return
+        val current = views ?: return
+        val root = current.root
         val activity = attachedActivity ?: return
         val params = windowParams ?: return
+        if (docking || !root.isAttachedToWindow) return
         val decor = activity.window.decorView
-        positionX = positionX.coerceIn(0, maxOf(0, decor.width - root.width))
-        positionY = positionY.coerceIn(0, maxOf(0, decor.height - root.height))
+        val hidden = dockSide != EdgeDockGeometry.NONE
+        val width = if (hidden) minOf(dp(24), maxOf(1, decor.width)) else panelWidth(activity)
+        val height = if (hidden) minOf(dp(80), maxOf(1, decor.height)) else {
+            current.panel.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(decor.height, View.MeasureSpec.AT_MOST))
+            current.panel.measuredHeight
+        }
+        positionX = EdgeDockGeometry.windowX(dockSide, positionX, width, decor.width)
+        positionY = positionY.coerceIn(0, maxOf(0, decor.height - height))
+        val windowHeight = if (hidden) height else WindowManager.LayoutParams.WRAP_CONTENT
+        if (params.x == positionX && params.y == positionY && params.width == width && params.height == windowHeight) return
         params.x = positionX
         params.y = positionY
+        params.width = width
+        params.height = windowHeight
         try {
             windowManager?.updateViewLayout(root, params)
         } catch (error: RuntimeException) {
@@ -665,8 +779,11 @@ class MemoryPressureFloatingPanel private constructor(
         }
     }
 
-    /** 通过系统触摸阈值区分标题点击和拖动。 */
-    private inner class DragListener : View.OnTouchListener {
+    /** 区分标题拖动与拉手拖出，同一次拉出手势不会在松手时立即重新隐藏。 */
+    private inner class DragListener(
+        /** 拉手手势由根窗口接收，完整面板的手势仅由标题接收。 */
+        private val fromHandle: Boolean = false
+    ) : View.OnTouchListener {
         /** 手势起点的屏幕横坐标。 */
         private var downX = 0f
         /** 手势起点的屏幕纵坐标。 */
@@ -677,16 +794,26 @@ class MemoryPressureFloatingPanel private constructor(
         private var originY = 0
         /** 超出阈值后不再把抬手解释为点击。 */
         private var dragging = false
+        /** 记录按下时的停靠侧，即使拖出后仍用于连续换算抓取点。 */
+        private var gestureSide = EdgeDockGeometry.NONE
+        /** 已向内拉出后，不再把当前手势视为普通标题停靠手势。 */
+        private var restored = false
 
-        /** 只消费标题区域手势，不拦截面板之外的业务操作。 */
+        /** 仅消费标题或窄拉手区域的手势，竖拖拉手可调整其停靠高度。 */
         override fun onTouch(view: View, event: MotionEvent): Boolean {
+            if (docking) return true
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    if (fromHandle && dockSide == EdgeDockGeometry.NONE) return false
+                    views?.panel?.animate()?.cancel()
+                    views?.panel?.translationX = 0f
                     downX = event.rawX
                     downY = event.rawY
                     originX = positionX
                     originY = positionY
                     dragging = false
+                    gestureSide = dockSide
+                    restored = false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downX
@@ -694,12 +821,25 @@ class MemoryPressureFloatingPanel private constructor(
                     val slop = ViewConfiguration.get(view.context).scaledTouchSlop
                     dragging = dragging || kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop
                     if (dragging) {
-                        positionX = originX + Math.round(dx)
+                        if (gestureSide != EdgeDockGeometry.NONE && !restored &&
+                            EdgeDockGeometry.isInwardDrag(gestureSide, dx, slop)) {
+                            restorePanel(animate = false, deltaX = Math.round(dx))
+                            restored = true
+                        }
+                        positionX = if (gestureSide == EdgeDockGeometry.NONE) originX + Math.round(dx)
+                        else if (restored) {
+                            val activity = attachedActivity ?: return true
+                            EdgeDockGeometry.restoredX(gestureSide, originX, panelWidth(activity), dp(24), Math.round(dx))
+                        } else positionX
                         positionY = originY + Math.round(dy)
                         constrainPosition()
                     }
                 }
-                MotionEvent.ACTION_UP -> if (!dragging) view.performClick()
+                MotionEvent.ACTION_UP -> {
+                    if (!dragging) view.performClick()
+                    else if (gestureSide == EdgeDockGeometry.NONE) dockAtNearestEdge()
+                    dragging = false
+                }
                 MotionEvent.ACTION_CANCEL -> dragging = false
                 else -> return false
             }
@@ -709,7 +849,10 @@ class MemoryPressureFloatingPanel private constructor(
 
     /** 当前页面的完整视图引用，整体置空即可解除对旧 Activity 的持有。 */
     private class PanelViews(
-        /** 窗口根布局。 */ val root: LinearLayout,
+        /** 持续接收拉手手势并跟随内容缩放的窗口根布局。 */ val root: FrameLayout,
+        /** 原有完整面板，隐藏时不占据窗口触摸区域。 */ val panel: LinearLayout,
+        /** 贴边时显示的 24×80dp 窄拉手。 */ val handle: LinearLayout,
+        /** 指向屏幕内侧的拉出箭头。 */ val handleArrow: ImageView,
         /** 标题文本。 */ val title: TextView,
         /** 展开操作区。 */ val body: ScrollView,
         /** 标题提示或折叠状态。 */ val headerHint: TextView,

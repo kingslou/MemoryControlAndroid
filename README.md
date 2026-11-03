@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 悬浮面板跟随前台 Activity，支持拖动、折叠和跨页面保留状态。
+- 悬浮面板跟随前台 Activity，支持拖动、折叠、左右贴边隐藏和跨页面保留状态。
 - 后台采样应用 PSS、Swap PSS、Java 堆、整机内存及低内存回调。
 - 支持 Native 像素内存、Java 堆和两者同时加压，可调整目标比例。
 - 暂停、收起、切页和进入后台均保留测试占用；手动释放只清除测试器持有的内存。
@@ -19,6 +19,17 @@ Demo 已通过 `:sample:assembleDebug` 编译，并在 Lenovo TB223FC（Android 
 | 展开状态 | 收起状态 |
 | --- | --- |
 | <img src="docs/screenshots/panel-expanded.png" alt="内存监控面板展开状态" width="420"> | <img src="docs/screenshots/panel-collapsed.png" alt="内存监控面板收起状态" width="420"> |
+
+## 贴边隐藏（1.2.0）
+
+- 拖动标题到距离左侧或右侧边缘 16dp 内松手，面板滑入边缘，只露出 24×80dp 的青色拉手。
+- 向屏幕内侧拖动拉手，或直接点击拉手，恢复隐藏前的展开/收起状态。拉出手势松手后不会立即再次隐藏。
+- 沿边缘竖向拖动可调整拉手高度。切页、前后台切换及页面尺寸变化后仍保留停靠侧，并约束在可见区域内。
+- 隐藏完成后实际窗口缩至拉手大小，原面板位置可正常操作业务按钮；隐藏不暂停加压，也不释放测试占用。
+
+以下为交互设计示意，并非新版运行截图：
+
+![左右贴边隐藏及拖出恢复示意](docs/edge-dock-preview.png)
 
 ## Gradle 依赖
 
@@ -38,17 +49,17 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.kingslou:MemoryControlAndroid:1.1.1")
+    implementation("com.github.kingslou:MemoryControlAndroid:1.2.0")
 }
 ```
 
-首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.1.1](https://jitpack.io/#kingslou/MemoryControlAndroid/1.1.1)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
+首次通过 JitPack 获取一个版本时，JitPack 会构建该 Git 标签。构建状态和日志：[1.2.0](https://jitpack.io/#kingslou/MemoryControlAndroid/1.2.0)。此仓库使用 Maven Publish 发布根项目的 release AAR 和源码包，示例 app 不参与发布。
 
 ### Kotlin 版本兼容
 
 从 `1.1.1` 起，发布产物使用 Kotlin 1.7 语言/API 级别和元数据，传递依赖 `kotlin-stdlib:1.7.10`，兼容 Kotlin 1.7.10 宿主。库自身仍使用 Kotlin 1.9.24 编译器构建；宿主无需跟随升级编译器。宿主已有更高版本的标准库时，Gradle 按正常版本冲突规则解析。
 
-`1.1.0` 的元数据和标准库为 Kotlin 1.9，Kotlin 1.7 宿主接入会报 `metadata is 1.9.0, expected version is 1.7.1`。请将依赖升级到 `1.1.1`；无需添加 `-Xskip-metadata-version-check` 或强制降级依赖。
+`1.1.0` 的元数据和标准库为 Kotlin 1.9，Kotlin 1.7 宿主接入会报 `metadata is 1.9.0, expected version is 1.7.1`。请将依赖升级到 `1.1.1` 或更新版本；无需添加 `-Xskip-metadata-version-check` 或强制降级依赖。
 
 如果只在调试包中保留库代码，可使用 `debugImplementation`，并将所有引用该库的代码放在 `src/debug` 中；不要在 `src/main` 直接引用仅存在于 debug 编译路径的类。
 

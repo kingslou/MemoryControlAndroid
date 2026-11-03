@@ -10,8 +10,8 @@ android {
         applicationId = "io.github.kingslou.memorycontrol.sample"
         minSdk = 23
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
